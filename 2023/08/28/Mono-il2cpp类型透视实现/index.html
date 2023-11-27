@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+    <head>
+  <!-- 元数据 -->
+  <meta charset="utf-8">
+  <link rel="icon" href="https://avatars.githubusercontent.com/u/102911714?s=400&u=a05dc8a3a193c2c5507081103355b9edf50db6e9&v=4">
+  
+  <title>Mono/il2cpp类型透视实现 | 遂沫 | 博客</title>
+  <link rel="canonical" href="https://example.com/2023/08/28/Mono-il2cpp%E7%B1%BB%E5%9E%8B%E9%80%8F%E8%A7%86%E5%AE%9E%E7%8E%B0/index.html">
+  <meta name="author" content="遂沫" />
+  <meta http-equiv="Cache-Control" content="no-transform" />
+  <meta http-equiv="Cache-Control" content="no-siteapp" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="robots" content="index,follow" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="format-detection" content="telphone=no, email=no" />
+  
+    <meta name="keywords" content="Unity, 作弊, 外挂, 教程, 游戏透视, 逆向" />
+  
+  <meta name="description" content="传统透视靠找矩阵和人物坐标来实现, 但这种办法放在由 C#催生的 Unity 游戏中并不是最优解 Unity 游戏可以借助 Mono&#x2F;il2cpp dll导出函数利用反射实现获取游戏类和函数签名, 这种方法高效又方便 实现原理 Hook 继承了 Component&#x2F;Transform 类的实体类构造 (直接 Hook 这两个类的构造也行) 获取到实体指针后利用多态的特性调用 C">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Mono&#x2F;il2cpp类型透视实现">
+<meta property="og:url" content="https://example.com/2023/08/28/Mono-il2cpp%E7%B1%BB%E5%9E%8B%E9%80%8F%E8%A7%86%E5%AE%9E%E7%8E%B0/index.html">
+<meta property="og:site_name" content="遂沫 | 博客">
+<meta property="og:description" content="传统透视靠找矩阵和人物坐标来实现, 但这种办法放在由 C#催生的 Unity 游戏中并不是最优解 Unity 游戏可以借助 Mono&#x2F;il2cpp dll导出函数利用反射实现获取游戏类和函数签名, 这种方法高效又方便 实现原理 Hook 继承了 Component&#x2F;Transform 类的实体类构造 (直接 Hook 这两个类的构造也行) 获取到实体指针后利用多态的特性调用 C">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://example.com/2023/08/28/Mono-il2cpp%E7%B1%BB%E5%9E%8B%E9%80%8F%E8%A7%86%E5%AE%9E%E7%8E%B0/https:/github.com/issuimo/issuimo.github.io/blob/main/img/unity_logo_black.png?raw=true">
+<meta property="article:published_time" content="2023-08-28T06:30:54.000Z">
+<meta property="article:modified_time" content="2023-11-19T13:43:19.090Z">
+<meta property="article:author" content="遂沫">
+<meta property="article:tag" content="逆向">
+<meta property="article:tag" content="作弊">
+<meta property="article:tag" content="教程">
+<meta property="article:tag" content="Unity">
+<meta property="article:tag" content="游戏透视">
+<meta property="article:tag" content="外挂">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://example.com/2023/08/28/Mono-il2cpp%E7%B1%BB%E5%9E%8B%E9%80%8F%E8%A7%86%E5%AE%9E%E7%8E%B0/https:/github.com/issuimo/issuimo.github.io/blob/main/img/unity_logo_black.png?raw=true">
+  
+  <!-- 站点验证相关 -->
+  
+    
+    
+    
+  
+  <!-- 样式表文件 -->
+  <link rel="stylesheet" id="kratos-css" href="/css/kratosr.min.css" media="all"></script>
+  
+    <link rel="stylesheet" id="darkmode-css" href="/css/kr-color-dark.min.css" media="(prefers-color-scheme: dark)"></script>
+    <script src="/js/kr-dark.min.js"></script>
+  
+  
+    <link rel="stylesheet" id="highlight-css" href="/css/highlight/night-eighties.min.css" media="all"></script>
+  
+  <link rel="stylesheet" id="fontawe-css" href="/vendors/font-awesome@4.7.0/css/font-awesome.min.css" media="all"></script>
+  <link rel="stylesheet" id="nprogress-css" href="/vendors/nprogress@0.2.0/nprogress.css" media="all"></script>
+  
+  
+    <link rel="stylesheet" href="/vendors/aplayer@1.10.1/dist/APlayer.min.css"></script>
+  
+  
+    <link rel="stylesheet" href="/vendors/@fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.css"></script>
+  
+  <!-- 不得不预先加载的一些JS文件 -->
+  <script src="/vendors/jquery@3.6.0/dist/jquery.min.js"></script>
+  
+    <script src="/vendors/qrcode_js@1.0.0/qrcode.min.js"></script>
+  
+  
+  <style>
+    
+      .kratos-cover.kratos-cover-2 {
+        background-image: url('/images/banner.webp');
+      }
+    
+    
+      @media(min-width:768px) {
+        body.custom-background {
+          background-image: url('/images/bg.webp');
+        }
+      }
+    
+  </style>
+  
+<meta name="generator" content="Hexo 6.3.0"></head>
+
+
+    <body class="custom-background">
+        <div id="kratos-wrapper">
+    <div id="kratos-page">
+        <div id="kratos-header">
+            <header id="kratos-desktop-topnav" class="kratos-topnav">
+                <div class="container">
+                    <div class="nav-header">
+                        <nav id="kratos-menu-wrap">
+                            <ul id="kratos-primary-menu" class="sf-menu">
+                                
+                                    
+                                        <li>
+                                            
+                                                <a href="/">
+                                            
+                                                
+                                                    <i class="fa fa-home"></i>
+                                                
+                                                首页
+                                            </a>
+                                            
+                                        </li>
+                                    
+                                        <li>
+                                            
+                                                <a href="/archives/">
+                                            
+                                                
+                                                    <i class="fa fa-file"></i>
+                                                
+                                                档案馆
+                                            </a>
+                                            
+                                        </li>
+                                    
+                                        <li>
+                                            
+                                                <a>
+                                            
+                                                
+                                                    <i class="fa fa-link"></i>
+                                                
+                                                链接
+                                            </a>
+                                            
+                                                <ul class="sub-menu">
+                                                    
+                                                        <li>
+                                                            <a target="_blank" rel="noopener" href="https://space.bilibili.com/319091647">
+                                                                
+                                                                BiliBili
+                                                            </a>
+                                                        </li>
+                                                    
+                                                        <li>
+                                                            <a target="_blank" rel="noopener" href="https://github.com/issuimo">
+                                                                
+                                                                Github
+                                                            </a>
+                                                        </li>
+                                                    
+                                                        <li>
+                                                            <a target="_blank" rel="noopener" href="https://t.me/ISSUIMO">
+                                                                
+                                                                Telegram
+                                                            </a>
+                                                        </li>
+                                                    
+                                                        <li>
+                                                            <a target="_blank" rel="noopener" href="https://twitter.com/suimo11900032">
+                                                                
+                                                                Twitter
+                                                            </a>
+                                                        </li>
+                                                    
+                                                        <li>
+                                                            <a target="_blank" rel="noopener" href="https://steamcommunity.com/id/-suimo-/">
+                                                                
+                                                                Steam
+                                                            </a>
+                                                        </li>
+                                                    
+                                                        <li>
+                                                            <a href="mailto:<a1992724048@outlook.com>">
+                                                                
+                                                                Email
+                                                            </a>
+                                                        </li>
+                                                    
+                                                        <li>
+                                                            <a target="_blank" rel="noopener" href="https://qm.qq.com/q/335WJFSzRe">
+                                                                
+                                                                QQ
+                                                            </a>
+                                                        </li>
+                                                    
+                                                </ul>
+                                            
+                                        </li>
+                                    
+                                
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </header>
+            <header id="kratos-mobile-topnav" class="kratos-topnav">
+                <div class="container">
+                    <div class="color-logo"><a href="/">遂沫 | 博客</a></div>
+                    <div class="nav-toggle">
+                        <a class="kratos-nav-toggle js-kratos-nav-toggle">
+                            <i></i>
+                        </a>
+                    </div>
+                </div>
+            </header>
+        </div>
+        <div class="kratos-start kratos-hero-2">
+            <!-- <div class="kratos-overlay"></div> -->
+            <div class="kratos-cover kratos-cover-2 text-center">
+                <div class="desc desc2 animate-box">
+                    <a href="/">
+                        <h2>遂沫 | 博客</h2> <br />
+                        <span>不要温柔地走进那段良夜</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div id="kratos-blog-post">
+            <div class="container">
+                <div id="main" class="row">
+                    
+
+        
+
+            <section class="col-md-8">
+
+        
+
+            <article itemscope itemtype="https://schema.org/Article">
+    
+    <link itemprop="mainEntityOfPage" href="https://example.com/2023/08/28/Mono-il2cpp%E7%B1%BB%E5%9E%8B%E9%80%8F%E8%A7%86%E5%AE%9E%E7%8E%B0/">
+    <div class="kratos-hentry kratos-post-inner clearfix">
+        <header class="kratos-entry-header">
+            
+                <h1 class="kratos-entry-title text-center" itemprop="name headline">Mono/il2cpp类型透视实现</h1>
+            
+            
+            <ul class="kratos-post-meta text-center">
+                <li><time datetime="2023-08-28T06:30:54.000Z" itemprop="datePublished"><i class="fa fa-calendar"></i> 2023-08-28</time></li>
+                <li itemprop="author" itemscope itemtype="https://schema.org/Person">
+                    <i class="fa fa-user"></i> 作者 <span itemprop="name">遂沫</span>
+                </li>
+                
+                    <li>
+                        <i class="fa fa-edit"></i> 
+                        
+                        
+                            ~2.44K
+                        
+                        字
+                    </li>
+                
+                
+                    
+                        <li>
+                            <i class="fa fa-eye"></i>
+                            <span data-path="/2023/08/28/Mono-il2cpp%E7%B1%BB%E5%9E%8B%E9%80%8F%E8%A7%86%E5%AE%9E%E7%8E%B0/" class="waline-pageview-count"> </span> 次阅读
+                        </li>
+                    
+                    
+                        <li>
+                            <i class="fa fa-commenting-o"></i>
+                            <span data-path="/2023/08/28/Mono-il2cpp%E7%B1%BB%E5%9E%8B%E9%80%8F%E8%A7%86%E5%AE%9E%E7%8E%B0/" class="waline-comment-count"> </span> 条评论
+                        </li>
+                    
+                
+            </ul>
+        </header>
+        <div class="kratos-post-content">
+            
+            <div id="expire-alert" class="alert alert-warning hidden" role="alert">
+                <div class="icon"><i class="fa fa-warning"></i></div>
+                <div class="text"><p>本文最后编辑于 <time datetime="1700401399090"></time> 前，其中的内容可能需要更新。</p></div>
+            </div>
+            
+            
+            
+                <div class="kratos-post-inner-toc toc-div-class" >
+                    <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86"><span class="toc-number">1.</span> <span class="toc-text">实现原理</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BB%A3%E7%A0%81%E6%BC%94%E7%A4%BA"><span class="toc-number">2.</span> <span class="toc-text">代码演示</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BD%BF%E7%94%A8-Unity-%E8%BF%90%E8%A1%8C%E6%97%B6%E5%8F%8D%E5%B0%84%E5%BA%93"><span class="toc-number">3.</span> <span class="toc-text">使用 Unity 运行时反射库</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%88%9D%E5%A7%8B%E5%8C%96-Unity-%E8%BF%90%E8%A1%8C%E6%97%B6%E5%8F%8D%E5%B0%84%E5%BA%93"><span class="toc-number">4.</span> <span class="toc-text">初始化 Unity 运行时反射库</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Hook-%E6%9E%84%E9%80%A0"><span class="toc-number">5.</span> <span class="toc-text">Hook 构造</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%8E%B7%E5%8F%96%E7%9B%B8%E6%9C%BA"><span class="toc-number">6.</span> <span class="toc-text">获取相机</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%8E%B7%E5%8F%96%E5%AE%9E%E4%BD%93%E5%9D%90%E6%A0%87"><span class="toc-number">7.</span> <span class="toc-text">获取实体坐标</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%96%E7%95%8C%E5%9D%90%E6%A0%87%E8%BD%AC%E5%B1%8F%E5%B9%95%E5%9D%90%E6%A0%87"><span class="toc-number">8.</span> <span class="toc-text">世界坐标转屏幕坐标</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%95%88%E6%9E%9C%E6%BC%94%E7%A4%BA"><span class="toc-number">9.</span> <span class="toc-text">效果演示</span></a></li></ol>
+                </div>
+            
+            <hr />
+            <div itemprop="articleBody"><p>传统透视靠找矩阵和人物坐标来实现, 但这种办法放在由 C#催生的 Unity 游戏中并不是最优解 Unity 游戏可以借助 Mono&#x2F;il2cpp dll导出函数利用反射实现获取游戏类和函数签名, 这种方法高效又方便</p>
+<h2 id="实现原理"><a href="#实现原理" class="headerlink" title="实现原理"></a>实现原理</h2><ul>
+<li>Hook 继承了 Component&#x2F;Transform 类的实体类构造 (直接 Hook 这两个类的构造也行)</li>
+<li>获取到实体指针后利用多态的特性调用 Component&#x2F;Transform 函数</li>
+<li>获取主相机或当前相机实现一键转屏幕坐标后绘制</li>
+</ul>
+<h2 id="代码演示"><a href="#代码演示" class="headerlink" title="代码演示"></a>代码演示</h2><ul>
+<li>Il2cpp: <a target="_blank" rel="noopener" href="https://github.com/issuimo/PhasmophobiaCheat">PhasmophobiaCheat</a></li>
+<li>Mono: <a target="_blank" rel="noopener" href="https://github.com/issuimo/ravenfield">ravenfield</a></li>
+</ul>
+<h2 id="使用-Unity-运行时反射库"><a href="#使用-Unity-运行时反射库" class="headerlink" title="使用 Unity 运行时反射库"></a>使用 Unity 运行时反射库</h2><p>对于如何获取游戏内我们可以使用 Unity 运行时反射库来实时获取游戏数据信息</p>
+<ul>
+<li><a target="_blank" rel="noopener" href="https://github.com/sneakyevil/IL2CPP_Resolver">IL2CPP Resolver</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/issuimo/UnityHack">UnityHack</a></li>
+<li><a target="_blank" rel="noopener" href="https://github.com/issuimo/UnityResolve.hpp">UnityResolve.hpp</a></li>
+</ul>
+<blockquote>
+<p>2023&#x2F;11&#x2F;12 <br>UnityHack 目前已转为更加实用的 UnityResolve</p>
+</blockquote>
+<p>借助以上库我们可以快速寻找函数地址进行 Hook 操作, 本文使用作者的 UnityHack 库和 Hook 继承了 Component&#x2F;Transform 类的类构造进行实践</p>
+<h2 id="初始化-Unity-运行时反射库"><a href="#初始化-Unity-运行时反射库" class="headerlink" title="初始化 Unity 运行时反射库"></a>初始化 Unity 运行时反射库</h2><p>使用以下代码实现库的初始化</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 初始化Il2cpp</span></span><br><span class="line">unity::Il2cpp::<span class="built_in">SetModule</span>(<span class="built_in">GetModuleHandleA</span>(<span class="string">&quot;GameAssembly.dll&quot;</span>));</span><br><span class="line"></span><br><span class="line"><span class="comment">// 初始化Mono</span></span><br><span class="line">unity::Mono::<span class="built_in">SetModule</span>(<span class="built_in">GetModuleHandleA</span>(<span class="string">&quot;mono-2.0-bdwgc.dll&quot;</span>));</span><br></pre></td></tr></table></figure>
+
+<div class="alert alert-warning"><div class="icon"><i class="fa fa-warning"></i></div><div class="text"><p>你是什么类型的游戏就选择哪种初始化， 切记不能够混用</p>
+</div></div>
+
+<h2 id="Hook-构造"><a href="#Hook-构造" class="headerlink" title="Hook 构造"></a>Hook 构造</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">auto</span> <span class="title">ESP::MusicBox_ctor_NEW</span><span class="params">(<span class="type">void</span>* p, unity::CSharper::Vector3 v)</span> -&gt; <span class="type">void</span> </span>&#123;</span><br><span class="line">    CursedItemsControllerAPI::musicBox_ = <span class="built_in">reinterpret_cast</span>&lt;std::<span class="type">uintptr_t</span>&gt;(p);</span><br><span class="line">    <span class="keyword">return</span> HookManager::<span class="built_in">call</span>(MusicBox_ctor_NEW, p, v);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">HookManager::<span class="built_in">install</span>(<span class="built_in">reinterpret_cast</span>&lt;<span class="built_in">void</span>(*)(<span class="type">void</span>*, unity::CSharper::Vector3)&gt;(unity::Il2cpp::Method::<span class="built_in">GetAddress</span>(<span class="string">&quot;MusicBox&quot;</span>, <span class="string">&quot;InitNetworked&quot;</span>, <span class="number">1</span>)), MusicBox_ctor_NEW);</span><br></pre></td></tr></table></figure>
+
+<p>通过 Hook 类的构造(初始化) 获取我们所需要的实体指针方便我们后面调用函数</p>
+<h2 id="获取相机"><a href="#获取相机" class="headerlink" title="获取相机"></a>获取相机</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">const</span> <span class="keyword">auto</span> camera = unity::CSharper::IL2cpp::Camera::<span class="built_in">GetMain</span>();</span><br></pre></td></tr></table></figure>
+
+<div class="alert alert-info"><div class="icon"><i class="fa fa-info"></i></div><div class="text"><p>部分游戏可能要枚举相机进行获取</p>
+</div></div>
+
+<h2 id="获取实体坐标"><a href="#获取实体坐标" class="headerlink" title="获取实体坐标"></a>获取实体坐标</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">const</span> <span class="keyword">auto</span> point = <span class="built_in">static_cast</span>&lt;unity::CSharper::IL2cpp::Component*&gt;(CursedItemsControllerAPI::<span class="built_in">hasHauntedMirror</span>())-&gt;<span class="built_in">GetTransform</span>()-&gt;<span class="built_in">GetPosition</span>();</span><br></pre></td></tr></table></figure>
+
+<p>因为目标类继承了 Component 类, 所以这里使用多态的方法获取实体坐标 <br>类似于:</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">B</span> &#123;</span><br><span class="line">    String name;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">void</span> <span class="title function_">out</span><span class="params">()</span> &#123; System.out.println(<span class="string">&quot;Hello World!&quot;</span>); &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">A</span> <span class="keyword">extends</span> <span class="title class_">B</span> &#123;</span><br><span class="line">    <span class="keyword">void</span> <span class="title function_">add</span><span class="params">(<span class="type">int</span> a, <span class="type">int</span> b)</span> &#123; <span class="keyword">return</span> a + b; &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="type">B</span> <span class="variable">b</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">A</span>();</span><br><span class="line">b.out();</span><br><span class="line">b.name = <span class="string">&quot;哈哈哈&quot;</span>;</span><br></pre></td></tr></table></figure>
+
+<h2 id="世界坐标转屏幕坐标"><a href="#世界坐标转屏幕坐标" class="headerlink" title="世界坐标转屏幕坐标"></a>世界坐标转屏幕坐标</h2><figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> vector3 = camera-&gt;<span class="built_in">WorldToScreenPoint</span>(point, unity::CSharper::IL2cpp::Camera::m_eCameraEye_Center);</span><br><span class="line">vector3.y = 窗口高度 - vector3.y;</span><br><span class="line"></span><br><span class="line"><span class="keyword">if</span> ((vector3.x &gt; <span class="number">0</span> &amp;&amp; vector3.y &gt; <span class="number">0</span>) &amp;&amp; (vector3.x &lt; initSpace::GuiInfo::w &amp;&amp; vector3.y &lt; initSpace::GuiInfo::h) &amp;&amp; vector3.z &gt; <span class="number">0</span>) &#123;</span><br><span class="line">    ImGui::<span class="built_in">GetBackgroundDrawList</span>()-&gt;<span class="built_in">AddText</span>(<span class="built_in">ImVec2</span>(vector3.x, vector3.y), <span class="built_in">ImColor</span>(<span class="number">148</span>, <span class="number">105</span>, <span class="number">204</span>), std::format(<span class="string">&quot;OBJECT \n [&#123;&#125;] M&quot;</span>, vector3.z).<span class="built_in">c_str</span>());</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>使用 WorldToScreenPoint 返回后 vector3 中的 y 坐标可能相反可以使用窗口高度减去 y 坐标 <br>vector3 中 z 坐标为距离, 当距离为负数时说明实体不在相机视野内</p>
+</blockquote>
+<h2 id="效果演示"><a href="#效果演示" class="headerlink" title="效果演示"></a>效果演示</h2><p><img src="https://github.com/issuimo/issuimo.github.io/blob/main/img/Demo1.png?raw=true" alt="Demo1"></p>
+</div>
+        </div>
+        
+            <div class="kratos-copyright text-center clearfix">
+                <h5 itemprop="copyrightNotice">本作品采用 <a rel="license nofollow" target="_blank" href="https://creativecommons.org/licenses/by-sa/4.0/">知识共享署名-相同方式共享 4.0 国际许可协议</a> 进行许可</h5>
+            </div>
+        
+        <footer class="kratos-entry-footer clearfix">
+            
+                <div class="post-like-donate text-center clearfix" id="post-like-donate">
+                
+                    <a class="donate" href="javascript:;"><i class="fa fa-bitcoin"></i> 打赏</a>
+                
+                
+                    <a class="share" href="javascript:;"><i class="fa fa-share-alt"></i> 分享</a>
+                    <div class="share-wrap" style="display: none;">
+    <div class="share-group">
+        <a href="javascript:;" class="share-plain qq" onclick="share('qq');" rel="nofollow">
+            <div class="icon-wrap">
+                <i class="fa fa-qq"></i>
+            </div>
+        </a>
+        <a href="javascript:;" class="share-plain qzone" onclick="share('qzone');" rel="nofollow">
+            <div class="icon-wrap">
+                <i class="fa fa-star"></i>
+            </div>
+        </a>
+        <a href="javascript:;" class="share-plain weixin pop style-plain" rel="nofollow">
+            <div class="icon-wrap">
+                <i class="fa fa-weixin"></i>
+            </div>
+            <div class="share-int">
+                <div class="qrcode" id="wechat-qr"></div>
+                <p>打开微信“扫一扫”，打开网页后点击屏幕右上角分享按钮</p>
+            </div>
+        </a>
+        <a href="javascript:;" class="share-plain weibo" onclick="share('weibo');" rel="nofollow">
+            <div class="icon-wrap">
+                <i class="fa fa-weibo"></i>
+            </div>
+        </a>
+        <a href="javascript:;" class="share-plain facebook style-plain" onclick="share('facebook');" rel="nofollow">
+            <div class="icon-wrap">
+                <i class="fa fa-facebook"></i>
+            </div>
+        </a>
+        <a href="javascript:;" class="share-plain twitter style-plain" onclick="share('twitter');" rel="nofollow">
+            <div class="icon-wrap">
+                <i class="fa fa-twitter"></i>
+            </div>
+        </a>
+    </div>
+    <script type="text/javascript">
+        $(()=>{
+            new QRCode("wechat-qr", {
+                text: "https://example.com/2023/08/28/Mono-il2cpp%E7%B1%BB%E5%9E%8B%E9%80%8F%E8%A7%86%E5%AE%9E%E7%8E%B0/",
+                width: 150,
+                height: 150,
+                correctLevel : QRCode.CorrectLevel.H
+            });
+        });
+        function share(dest) {
+            const qqBase        = "https://connect.qq.com/widget/shareqq/index.html?";
+            const weiboBase     = "https://service.weibo.com/share/share.php?";
+            const qzoneBase     = "https://sns.qzone.qq.com/cgi-bin/qzshare/cgi_qzshare_onekey?";
+            const facebookBase  = "https://www.facebook.com/sharer/sharer.php?";
+            const twitterBase   = "https://twitter.com/intent/tweet?";
+            const hostUrl       = "https://example.com/2023/08/28/Mono-il2cpp%E7%B1%BB%E5%9E%8B%E9%80%8F%E8%A7%86%E5%AE%9E%E7%8E%B0/";
+            const title         = "「Mono/il2cpp类型透视实现」";
+            const excerpt       = `传统透视靠找矩阵和人物坐标来实现, 但这种办法放在由 C#催生的 Unity 游戏中并不是最优解 Unity 游戏可以借助 Mono&#x2F;il2cpp dll导出函数利用反射实现获取游戏类和函数签名, 这种方法高效又方便
+实现原...`;
+            let _URL;
+            switch (dest) {
+                case "qq"       : _URL = qqBase+"url="+hostUrl+"&title="+title+"&desc=&summary="+excerpt+"&site=cxpy";     break;
+                case "weibo"    : _URL = weiboBase+"url="+hostUrl+"&title="+title+excerpt;                                 break;
+                case "qzone"    : _URL = qzoneBase+"url="+hostUrl+"&title="+title+"&desc=&summary="+excerpt+"&site=cxpy";  break;
+                case "facebook" : _URL = facebookBase+"u="+hostUrl;                                                        break;
+                case "twitter"  : _URL = twitterBase+"text="+title+excerpt+"&url="+hostUrl;                                break;
+            }
+            window.open(_URL);
+        };
+    </script>
+</div>
+                
+                </div>
+            
+            <div class="footer-tag clearfix">
+                <div class="pull-left">
+                <i class="fa fa-tags"></i>
+                    <a class="tag-none-link" href="/tags/Unity/" rel="tag">Unity</a>, <a class="tag-none-link" href="/tags/%E4%BD%9C%E5%BC%8A/" rel="tag">作弊</a>, <a class="tag-none-link" href="/tags/%E5%A4%96%E6%8C%82/" rel="tag">外挂</a>, <a class="tag-none-link" href="/tags/%E6%95%99%E7%A8%8B/" rel="tag">教程</a>, <a class="tag-none-link" href="/tags/%E6%B8%B8%E6%88%8F%E9%80%8F%E8%A7%86/" rel="tag">游戏透视</a>, <a class="tag-none-link" href="/tags/%E9%80%86%E5%90%91/" rel="tag">逆向</a>
+                </div>
+                <div class="pull-date">
+                    <time datetime="2023-11-19T13:43:19.090Z" itemprop="dateModified">最后编辑：2023-11-19</time>
+                </div>
+            </div>
+        </footer>
+    </div>
+    
+        <nav class="navigation post-navigation clearfix" role="navigation">
+            
+            <div class="nav-previous clearfix">
+                <a title=" 内存页面Hook的实现" href="/2023/08/28/内存页面Hook的实现/">&lt; 上一篇</a>
+            </div>
+            
+            
+            <div class="nav-next clearfix">
+                <a title=" Hello World" href="/2023/11/28/hello-world/">下一篇 &gt;</a>
+            </div>
+            
+        </nav>
+    
+    
+        <div id="w-comments" class="post-comments bg-image"></div>
+<link rel="stylesheet" href="/vendors/@waline/client@2.14.1/dist/waline.css" />
+<script>
+    var load_comm = () => {
+        const init = () => {
+            Waline.init(Object.assign({
+                el: '#w-comments',
+                path: '/2023/08/28/Mono-il2cpp%E7%B1%BB%E5%9E%8B%E9%80%8F%E8%A7%86%E5%AE%9E%E7%8E%B0/',
+                dark: 'html[data-theme="dark"]',
+            }, JSON.parse('{"serverURL":"https://vercel.issuimoo.com/","comment":true,"pageview":true}')));
+        }
+        if (typeof Waline === 'undefined') {
+            const src = '/vendors/@waline/client@2.14.1/dist/waline.js';
+            $.getScript(src, init);
+        } else {
+            init();
+        }
+    };
+</script>
+<noscript>Please enable JavaScript to view the <a target="_blank" rel="noopener" href="https://waline.js.org/">comments powered by Waline.</a></noscript>
+
+    
+</article>
+
+        
+
+            </section>
+
+        
+
+                
+            
+
+<section id="kratos-widget-area" class="col-md-4 hidden-xs hidden-sm">
+    <!-- 文章和页面根据splitter来分割，没有的话就从头开始设置为sticky -->
+    
+    
+                <aside id="krw-about" class="widget widget-kratos-about clearfix">
+    <div class="photo-background"></div>
+    <div class="photo-wrapper clearfix">
+        <div class="photo-wrapper-tip text-center">
+            <img class="about-photo" src="https://avatars.githubusercontent.com/u/102911714?s=400&amp;u=a05dc8a3a193c2c5507081103355b9edf50db6e9&amp;v=4" loading="lazy" decoding="auto" />
+        </div>
+    </div>
+    <div class="textwidget">
+        <p class="text-center">遂沫</p>
+    </div>
+    <div class="site-meta">
+        <a class="meta-item" href="/archives/">
+            <span class="title">
+                文章
+            </span>
+            <span class="count">
+                3
+            </span>
+        </a>
+        <a class="meta-item" href="/categories/">
+            <span class="title">
+                分类
+            </span>
+            <span class="count">
+                3
+            </span>
+        </a>
+        <a class="meta-item" href="/tags/">
+            <span class="title">
+                标签
+            </span>
+            <span class="count">
+                8
+            </span>
+        </a>
+    </div>
+</aside>
+            
+                    <div class="sticky-area">
+                
+                    <aside id="krw-toc" class="widget widget-kratos-toc clearfix toc-div-class" >
+    <div class="photo-background"></div>
+    <h4 class="widget-title no-after">
+        <i class="fa fa-compass"></i>
+        文章目录
+        <span class="toc-progress-bar" role="progressbar" aria-label="阅读进度："></span>
+    </h4>
+    <div class="textwidget">
+        <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%AE%9E%E7%8E%B0%E5%8E%9F%E7%90%86"><span class="toc-text">实现原理</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BB%A3%E7%A0%81%E6%BC%94%E7%A4%BA"><span class="toc-text">代码演示</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%BD%BF%E7%94%A8-Unity-%E8%BF%90%E8%A1%8C%E6%97%B6%E5%8F%8D%E5%B0%84%E5%BA%93"><span class="toc-text">使用 Unity 运行时反射库</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E5%88%9D%E5%A7%8B%E5%8C%96-Unity-%E8%BF%90%E8%A1%8C%E6%97%B6%E5%8F%8D%E5%B0%84%E5%BA%93"><span class="toc-text">初始化 Unity 运行时反射库</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Hook-%E6%9E%84%E9%80%A0"><span class="toc-text">Hook 构造</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%8E%B7%E5%8F%96%E7%9B%B8%E6%9C%BA"><span class="toc-text">获取相机</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E8%8E%B7%E5%8F%96%E5%AE%9E%E4%BD%93%E5%9D%90%E6%A0%87"><span class="toc-text">获取实体坐标</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E4%B8%96%E7%95%8C%E5%9D%90%E6%A0%87%E8%BD%AC%E5%B1%8F%E5%B9%95%E5%9D%90%E6%A0%87"><span class="toc-text">世界坐标转屏幕坐标</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#%E6%95%88%E6%9E%9C%E6%BC%94%E7%A4%BA"><span class="toc-text">效果演示</span></a></li></ol>
+    </div>
+</aside>
+                
+                
+  <aside id="krw-categories" class="widget widget-kratos-categories clearfix">
+    <h4 class="widget-title"><i class="fa fa-folder"></i>分类目录</h4>
+      <ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/%E6%95%99%E7%A8%8B/">教程</a><span class="category-list-count">2</span><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/%E6%95%99%E7%A8%8B/Unity%E9%80%86%E5%90%91/">Unity逆向</a><span class="category-list-count">1</span></li><li class="category-list-item"><a class="category-list-link" href="/categories/%E6%95%99%E7%A8%8B/VEHHook/">VEHHook</a><span class="category-list-count">1</span></li></ul></li></ul>
+  </aside>
+
+
+            
+                
+  <aside id="krw-tags" class="widget widget-kratos-tags clearfix">
+    <h4 class="widget-title"><i class="fa fa-tags"></i>标签聚合</h4>
+      <div class="tag-clouds">
+        <a href="/tags/Hook/" style="font-size: 0.6em;">Hook</a> <a href="/tags/Unity/" style="font-size: 0.6em;">Unity</a> <a href="/tags/%E4%BD%9C%E5%BC%8A/" style="font-size: 0.6em;">作弊</a> <a href="/tags/%E5%8F%8D%E6%A3%80%E6%B5%8B/" style="font-size: 0.6em;">反检测</a> <a href="/tags/%E5%A4%96%E6%8C%82/" style="font-size: 0.6em;">外挂</a> <a href="/tags/%E6%95%99%E7%A8%8B/" style="font-size: 0.6em;">教程</a> <a href="/tags/%E6%B8%B8%E6%88%8F%E9%80%8F%E8%A7%86/" style="font-size: 0.6em;">游戏透视</a> <a href="/tags/%E9%80%86%E5%90%91/" style="font-size: 0.6em;">逆向</a>
+      </div>
+  </aside>
+
+            
+                
+  <aside id="krw-posts" class="widget widget-kratos-posts">
+  <h4 class="widget-title"><i class="fa fa-file"></i>最新文章</h4>
+  <div class="tab-content">
+      <ul class="list-group">
+        
+        
+          
+          
+            <a class="list-group-item" href="/2023/11/28/hello-world/"><i class="fa  fa-book"></i> Hello World</a>
+            
+          
+        
+          
+          
+            <a class="list-group-item" href="/2023/08/28/Mono-il2cpp%E7%B1%BB%E5%9E%8B%E9%80%8F%E8%A7%86%E5%AE%9E%E7%8E%B0/"><i class="fa  fa-book"></i> Mono/il2cpp类型透视实现</a>
+            
+          
+        
+          
+          
+            <a class="list-group-item" href="/2023/08/28/%E5%86%85%E5%AD%98%E9%A1%B5%E9%9D%A2Hook%E7%9A%84%E5%AE%9E%E7%8E%B0/"><i class="fa  fa-book"></i> 内存页面Hook的实现</a>
+            
+          
+        
+      </ul>
+  </div>
+  </aside>
+
+            
+    </div>
+</section>
+        
+        </div>
+    </div>
+</div>
+<footer>
+    <div id="footer"  class="ap-lrc"  >
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6 col-md-offset-3 footer-list text-center">
+                    <ul class="kratos-social-icons">
+                        <!-- Keep for compatibility -->
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        
+                        <!-- New links -->
+                        
+                            <li>
+                                <a target="_blank" rel="nofollow" href="https://github.com/issuimo">
+                                    
+                                        <i class="fa fa-github"></i>
+                                    
+                                </a>
+                            </li>
+                        
+                    </ul>
+                    <ul class="kratos-copyright">
+                        <div>
+                            <li>&copy; 2023 遂沫 | 博客 版权所有.</li>
+                            <li>本站已运行<span id="span_dt">Loading...</span></li>
+                        </div>
+                        <div>
+                            <li>Theme <a href="https://github.com/Candinya/Kratos-Rebirth" target="_blank">Kratos:Rebirth</a></li>
+                            <li>Site built with&nbsp;<i class="fa fa-heart throb" style="color:#d43f57"></i>&nbsp;by 遂沫.</li>
+                        </div>
+                        <div>
+                            <li>Powered by <a href="https://hexo.io" target="_blank" rel="nofollow">Hexo</a></li>
+                            <li>Hosted on <a href="https://github.io" target="_blank">Github Pages</a></li>
+                        </div>
+                        <div>
+                            
+                            
+                        </div>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="kr-tool text-center">
+            <div class="tool">
+                
+                    <div class="box search-box">
+                        <a href="/search/">
+                            <span class="fa fa-search"></span>
+                        </a>
+                    </div>
+                
+                
+                    <div class="box theme-box" id="darkmode-switch">
+                        <span class="fa fa-adjust"></span>
+                    </div>
+                
+                
+                    <div class="box theme-box" id="snow-switch">
+                        <span class="fa fa-snowflake-o"></span>
+                    </div>
+                
+                
+            </div>
+            <div class="box gotop-box">
+                <span class="fa fa-chevron-up"></span>
+            </div>
+        </div>
+    </div>
+</footer>
+</div>
+</div>
+
+        <script defer src="/vendors/bootstrap@3.3.4/dist/js/bootstrap.min.js"></script>
+<script defer src="/vendors/nprogress@0.2.0/nprogress.js"></script>
+<script>
+    if (!window.kr) {
+        window.kr = {};
+    }
+    window.kr.notMobile = (!(navigator.userAgent.match(/(phone|pad|pod|iPhone|iPod|ios|iPad|Android|Mobile|BlackBerry|IEMobile|MQQBrowser|JUC|Fennec|wOSBrowser|BrowserNG|WebOS|Symbian|Windows Phone)/i)));
+    window.kr.siteRoot = "/";
+</script>
+
+    <div>
+        <canvas id="snow"></canvas>
+        <script async src="/js/snow.min.js"></script>
+    </div>
+
+
+    <script async src="/js/candy.min.js"></script>
+
+
+
+    <script defer src="/vendors/aplayer@1.10.1/dist/APlayer.min.js"></script>
+    
+    <script defer src="/vendors/meting@2.0.1/dist/Meting.min.js"></script>
+    <meting-js
+        server="netease"
+        type="playlist"
+        id="3204190542"
+        order="random"
+        fixed="true"
+    >
+    </meting-js>
+
+
+
+    <script defer src="/vendors/@fancyapps/fancybox@3.5.7/dist/jquery.fancybox.min.js"></script>
+
+<script defer src="/js/kratosr.min.js"></script>
+<script defer src="/js/pjax.min.js"></script>
+
+    <script defer src="/vendors/layui-src@2.5.5/dist/layui.all.js"></script>
+
+
+
+<!-- Extra support for third-party plguins  -->
+
+
+    </body>
+</html>
